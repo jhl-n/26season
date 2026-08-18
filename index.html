@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>계절의 변화 모습 찾기</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', dotum, sans-serif;
+            text-align: center;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 15px;
+            /* 모바일 기기 텍스트 선택 방지 */
+            user-select: none; 
+            -webkit-user-select: none;
+        }
+        h2 { 
+            color: #333; 
+            margin-top: 5px;
+            font-size: 22px;
+        }
+        p.guide {
+            color: #555;
+            font-size: 15px;
+            margin-bottom: 15px;
+            word-break: keep-all;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 0 5px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background-color: #4CAF50;
+            color: white;
+            transition: background-color 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:active { background-color: #3e8e41; transform: translateY(2px); }
+        
+        .image-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 700px; /* 태블릿/PC 최대 너비 */
+            aspect-ratio: 4 / 3; /* 이미지 비율에 맞춰 조정 (가로:세로) */
+            margin: 0 auto;
+            border: 4px solid #333;
+            overflow: hidden;
+            background-color: #fff;
+            border-radius: 8px;
+        }
+
+        .layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* 첫 번째 이미지 (뒷 배경 역할) */
+        #img-bg {
+            z-index: 1;
+        }
+
+        /* 두 번째 이미지 (세로 조각으로 잘려 보이는 역할) */
+        #img-fg {
+            z-index: 2;
+            /* 초기 상태: 절반씩 교차하여 보이도록 설정 (조각 전체 너비 40px 기준) */
+            -webkit-mask-image: repeating-linear-gradient(to right, black 0px, black 20px, transparent 20px, transparent 40px);
+            mask-image: repeating-linear-gradient(to right, black 0px, black 20px, transparent 20px, transparent 40px);
+        }
+
+        /* 슬라이더 손잡이 디자인 */
+        .slider-container {
+            max-width: 700px;
+            margin: 20px auto;
+        }
+        .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 40px;
+            background: #ddd;
+            outline: none;
+            border-radius: 20px;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #FF5722;
+            cursor: pointer;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+        }
+        .slider::-moz-range-thumb {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #FF5722;
+            cursor: pointer;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+        }
+        
+        /* 출처 텍스트 스타일 */
+        .source-text {
+            color: #777;
+            font-size: 13px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>계절의 변화 모습 찾기</h2>
+    <p class="guide">아래 동그란 버튼을 좌우로 움직이면<br>두 계절의 그림이 세로 조각으로 번갈아 나타납니다!</p>
+
+    <div class="controls">
+        <button onclick="setSeason('spring-summer')">봄 ↔ 여름</button>
+        <button onclick="setSeason('fall-winter')">가을 ↔ 겨울</button>
+    </div>
+
+    <div class="image-wrapper">
+        <img id="img-bg" class="layer" src="과_010_2.jpg" alt="계절그림1">
+        <img id="img-fg" class="layer" src="과_010_3.jpg" alt="계절그림2">
+    </div>
+
+    <div class="slider-container">
+        <input type="range" min="0" max="40" value="20" class="slider" id="mySlider" oninput="updateSlices()">
+    </div>
+    
+    <div class="source-text">
+        이미지 출처 : 2026년 6학년 2학기 미래엔 과학교과서
+    </div>
+
+    <script>
+        // 슬라이더 조작 시 세로 조각의 너비를 조절하는 함수
+        function updateSlices() {
+            var slider = document.getElementById("mySlider");
+            var imgFg = document.getElementById("img-fg");
+            var val = slider.value;
+            
+            // 슬라이더 값에 따라 보여지는(검은색) 영역과 투명한 영역의 비율 조절
+            var maskString = "repeating-linear-gradient(to right, black 0px, black " + val + "px, transparent " + val + "px, transparent 40px)";
+            
+            imgFg.style.webkitMaskImage = maskString;
+            imgFg.style.maskImage = maskString;
+        }
+
+        // 버튼 클릭 시 계절 이미지를 교체하는 함수
+        function setSeason(seasonType) {
+            var imgBg = document.getElementById("img-bg");
+            var imgFg = document.getElementById("img-fg");
+            var slider = document.getElementById("mySlider");
+
+            if (seasonType === 'spring-summer') {
+                imgBg.src = "과_010_2.jpg"; // 봄
+                imgFg.src = "과_010_3.jpg"; // 여름
+            } else if (seasonType === 'fall-winter') {
+                imgBg.src = "과_111_1.jpg"; // 가을
+                imgFg.src = "과_111_2.jpg"; // 겨울
+            }
+            
+            // 이미지 교체 시 슬라이더를 중앙(절반씩 교차)으로 초기화
+            slider.value = 20;
+            updateSlices();
+        }
+    </script>
+
+</body>
+</html>
