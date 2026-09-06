@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>학생 화면 · 모둠 협력 문제풀이</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <strong id="idLine" class="muted"></strong>
+      </div>
+      <div>
+        <span class="mode-banner" id="modeBanner"></span>
+        <a href="#" id="resetLink" class="small" style="margin-left:10px; display:none;">다시 선택</a>
+      </div>
+    </div>
+    <div id="app"></div>
+  </div>
+
+  <script src="js/stations-config.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/db-adapter.js"></script>
+  <script src="js/student.js"></script>
+</body>
+</html>
