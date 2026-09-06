@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>앙부일구 시뮬레이터 (태양 궤적 동서 반전 및 레이아웃 개선)</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; text-align: center; background-color: #f4f4f9; padding: 20px; }
+        .canvas-container { position: relative; display: inline-block; margin-bottom: 20px; }
+        /* 캔버스가 넓어졌으므로 배경 효과를 유지하며 둥근 모서리 적용 */
+        canvas { background: #e9deca; border-radius: 12px; box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        .controls { background: white; padding: 20px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: left; min-width: 500px; }
+        .control-group { margin-bottom: 20px; }
+        input[type=range] { width: 100%; margin-top: 8px; cursor: pointer; }
+        label { font-weight: bold; display: inline-block; width: 130px; }
+        .val-text { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>조선시대 앙부일구 시뮬레이터</h2>
+    <div class="canvas-container">
+        <canvas id="angbuilgu" width="800" height="600"></canvas>
+    </div>
+    <br>
+    <div class="controls">
+        <div class="control-group">
+            <label>태양 적위 (계절):</label> 
+            <span id="seasonVal" class="val-text" style="color:#d35400;">춘분 / 추분 (3월 21일 / 9월 23일경)</span>
+            <input type="range" id="declination" min="-23.5" max="23.5" step="0.1" value="0">
+        </div>
+        
+        <div class="control-group">
+            <label>시각 (시간각):</label> 
+            <span id="timeVal" class="val-text" style="color:#2980b9;">오시 (12:00)</span>
+            <input type="range" id="time" min="-90" max="90" step="1" value="0">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('angbuilgu');
+        const ctx = canvas.getContext('2d');
+        
+        // 앙부일구 중심좌표(cx)를 320으로 설정하여 좌측에 치우치게 하고 우측 공간 확보
+        const cx = 320, cy = 300, R = 280;
+        const LAT = 37.5 * Math.PI / 180; 
+
+        const solarTerms = [
+            { dec: 23.5, name: "하지", date: "6월 21일" },
+            { dec: 22.65, name: "망종 / 소서", date: "6월 5일 / 7월 7일" },
+            { dec: 20.2, name: "소만 / 대서", date: "5월 21일 / 7월 23일" },
+            { dec: 16.37, name: "입하 / 입추", date: "5월 5일 / 8월 7일" },
+            { dec: 11.5, name: "곡우 / 처서", date: "4월 20일 / 8월 23일" },
+            { dec: 5.92, name: "청명 / 백로", date: "4월 4일 / 9월 7일" },
+            { dec: 0.0, name: "춘분 / 추분", date: "3월 21일 / 9월 23일" },
+            { dec: -5.92, name: "경칩 / 한로", date: "3월 5일 / 10월 8일" },
+            { dec: -11.5, name: "우수 / 상강", date: "2월 19일 / 10월 23일" },
+            { dec: -16.37, name: "입춘 / 입동", date: "2월 4일 / 11월 7일" },
+            { dec: -20.2, name: "대한 / 소설", date: "1월 20일 / 11월 22일" },
+            { dec: -22.65, name: "소한 / 대설", date: "1월 5일 / 12월 7일" },
+            { dec: -23.5, name: "동지", date: "12월 22일" }
+        ];
+
+        function init() {
+            document.getElementById('declination').addEventListener('input', updateUI);
+            document.getElementById('time').addEventListener('input', updateUI);
+            updateUI();
+        }
+
+        function updateUI() {
+            let dec = parseFloat(document.getElementById('declination').value);
+            let timeAngle = parseFloat(document.getElementById('time').value);
+            
+            let closestTerm = solarTerms.reduce((prev, curr) => 
+                Math.abs(curr.dec - dec) < Math.abs(prev.dec - dec) ? curr : prev
+            );
+            document.getElementById('seasonVal').innerText = `${closestTerm.name} (${closestTerm.date}경) [적위: ${dec.toFixed(1)}°]`;
+
+            let hours = 12 + (timeAngle / 15);
+            let h = Math.floor(hours);
+            let m = Math.round((hours - h) * 60);
+            let sibiji = ["묘", "진", "사", "오", "미", "신", "유"];
+            let idx = Math.floor((hours - 5.5) / 2);
+            let ji = sibiji[Math.max(0, Math.min(6, idx))] + "시";
+            document.getElementById('timeVal').innerText = `${ji} (${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')})`;
+
+            draw();
+        }
+
+        function getShadowPos(decDeg, hDeg) {
+            let dec = decDeg * Math.PI / 180;
+            let H = hDeg * Math.PI / 180;
+            let Z = Math.sin(LAT)*Math.sin(dec) + Math.cos(LAT)*Math.cos(dec)*Math.cos(H);
+            if (Z <= 0) return null; 
+
+            let X = -Math.cos(dec)*Math.sin(H);
+            let Y = Math.sin(dec)*Math.cos(LAT) - Math.cos(dec)*Math.sin(LAT)*Math.cos(H);
+
+            return { x: cx - X * R, y: cy + Y * R };
+        }
+
+        function drawPath(valDeg, isSeason) {
+            ctx.beginPath();
+            let started = false;
+            let startLimit = isSeason ? -90 : -23.5;
+            let endLimit = isSeason ? 90 : 23.5;
+            let step = isSeason ? 2 : 1;
+
+            for (let i = startLimit; i <= endLimit; i += step) {
+                let pos = isSeason ? getShadowPos(valDeg, i) : getShadowPos(i, valDeg);
+                if (pos) {
+                    if (!started) { ctx.moveTo(pos.x, pos.y); started = true; }
+                    else { ctx.lineTo(pos.x, pos.y); }
+                }
+            }
+            ctx.stroke();
+        }
+
+        function drawMainAngbuilgu() {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, Math.PI * 2);
+            // 메인 앙부일구 반구의 미세한 색상 차이 적용
+            ctx.fillStyle = '#e6d8c1';
+            ctx.fill();
+            
+            ctx.lineWidth = 15;
+            ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+            ctx.stroke();
+            ctx.lineWidth = 1;
+            ctx.restore();
+
+            const termDecs = [-23.5, -22.65, -20.2, -16.37, -11.5, -5.92, 0, 5.92, 11.5, 16.37, 20.2, 22.65, 23.5];
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.lineWidth = 1.5;
+            for (let d of termDecs) drawPath(d, true);
+
+            for (let h = -90; h <= 90; h += 3.75) {
+                if (Math.abs(h % 15) < 0.1) {
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.2;
+                } else {
+                    ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 0.5;
+                }
+                drawPath(h, false);
+            }
+
+            const sibijiArr = [
+                { name: '묘(卯)', angle: -90 }, { name: '진(辰)', angle: -60 },
+                { name: '사(巳)', angle: -30 }, { name: '오(午)', angle: 0 },
+                { name: '미(未)', angle: 30 }, { name: '신(申)', angle: 60 }, { name: '유(酉)', angle: 90 }
+            ];
+            ctx.font = 'bold 16px "Malgun Gothic", sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            sibijiArr.forEach(t => {
+                let textPos = getShadowPos(-26, t.angle);
+                if (textPos) {
+                    ctx.strokeStyle = '#e6d8c1'; ctx.lineWidth = 4;
+                    ctx.strokeText(t.name, textPos.x, textPos.y);
+                    ctx.fillStyle = '#2c3e50'; ctx.fillText(t.name, textPos.x, textPos.y);
+                }
+            });
+
+            let currentDec = parseFloat(document.getElementById('declination').value);
+            let currentTime = parseFloat(document.getElementById('time').value);
+            let pos = getShadowPos(currentDec, currentTime);
+
+            if (pos) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + R);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.strokeStyle = 'rgba(20, 20, 20, 0.4)';
+                ctx.lineWidth = 5;
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetX = -2;
+                ctx.shadowOffsetY = 2;
+                ctx.lineCap = "round";
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 3, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fill();
+                ctx.restore();
+            }
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(cx - 6, cy + R); ctx.lineTo(cx + 6, cy + R); 
+            ctx.lineTo(cx + 1.5, cy);   ctx.lineTo(cx - 1.5, cy);   
+            ctx.closePath();
+
+            let gnomonGrad = ctx.createLinearGradient(cx - 6, cy + R, cx + 6, cy + R);
+            gnomonGrad.addColorStop(0, '#2d1b15');
+            gnomonGrad.addColorStop(0.5, '#8d6e63');
+            gnomonGrad.addColorStop(1, '#2d1b15');
+            ctx.fillStyle = gnomonGrad; ctx.fill();
+            ctx.strokeStyle = '#1a0f0c'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawSubScreen() {
+            const subW = (R * 2) / 3; 
+            const subH = (R * 2) / 3;
+            const padding = 20;
+            
+            // 캔버스가 800으로 넓어졌으므로, 우측 바깥쪽에 앙부일구와 겹치지 않게 배치됨
+            const subX = canvas.width - subW - padding; 
+            const subY = padding;
+            const groundY = subY + subH - 35; 
+            const subCx = subX + subW / 2;
+
+            let currentDec = parseFloat(document.getElementById('declination').value) * Math.PI / 180;
+            let currentTime = parseFloat(document.getElementById('time').value) * Math.PI / 180;
+
+            ctx.save();
+            
+            let skyGrad = ctx.createLinearGradient(subX, subY, subX, groundY);
+            skyGrad.addColorStop(0, '#5DADE2');
+            skyGrad.addColorStop(1, '#AED6F1');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(subX, subY, subW, subH);
+
+            ctx.fillStyle = '#8d6e63';
+            ctx.fillRect(subX, groundY, subW, subH - (groundY - subY));
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(subX, subY, subW, subH);
+
+            ctx.beginPath();
+            ctx.arc(subCx, groundY, 15, Math.PI, 2 * Math.PI);
+            ctx.fillStyle = '#e6d8c1';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // 4. 태양 궤적선 (동서 방향 반전 적용: X값의 뺄셈을 덧셈으로 변경)
+            ctx.beginPath();
+            let pathStarted = false;
+            for(let h = -90; h <= 90; h += 5) {
+                let H = h * Math.PI / 180;
+                let Z = Math.sin(LAT)*Math.sin(currentDec) + Math.cos(LAT)*Math.cos(currentDec)*Math.cos(H);
+                let X = -Math.cos(currentDec)*Math.sin(H);
+                
+                if(Z > 0) { 
+                    // 방향 반전: 아침(동쪽)이 우측에 오도록 `subCx + X`로 수정
+                    let px = subCx + X * (subW / 2 - 20); 
+                    let py = groundY - Z * (groundY - subY - 25);
+                    if(!pathStarted) { ctx.moveTo(px, py); pathStarted = true; }
+                    else { ctx.lineTo(px, py); }
+                }
+            }
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 5. 현재 태양 렌더링 (동서 방향 반전 적용)
+            let Z_sun = Math.sin(LAT)*Math.sin(currentDec) + Math.cos(LAT)*Math.cos(currentDec)*Math.cos(currentTime);
+            let X_sun = -Math.cos(currentDec)*Math.sin(currentTime);
+
+            if (Z_sun > 0) {
+                // 방향 반전: `subCx + X_sun`
+                let sunPx = subCx + X_sun * (subW / 2 - 20);
+                let sunPy = groundY - Z_sun * (groundY - subY - 25);
+                
+                let sunGrad = ctx.createRadialGradient(sunPx, sunPy, 2, sunPx, sunPy, 14);
+                sunGrad.addColorStop(0, 'rgba(255, 255, 0, 1)');
+                sunGrad.addColorStop(0.5, 'rgba(255, 165, 0, 0.8)');
+                sunGrad.addColorStop(1, 'rgba(255, 165, 0, 0)');
+                
+                ctx.beginPath();
+                ctx.arc(sunPx, sunPy, 14, 0, Math.PI * 2);
+                ctx.fillStyle = sunGrad;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(sunPx, sunPy, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#FFF176';
+                ctx.fill();
+            }
+
+            // 6. 텍스트 라벨 (좌측이 서쪽, 우측이 동쪽으로 변경됨)
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 11px "Malgun Gothic", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("서(西)", subX + 20, groundY + 15);
+            ctx.fillText("동(東)", subX + subW - 20, groundY + 15);
+            
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 12px "Malgun Gothic", sans-serif';
+            ctx.fillText("[ 북쪽을 향한 시점 ]", subCx, subY + 18);
+
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawMainAngbuilgu();
+            drawSubScreen(); 
+        }
+
+        init();
+    </script>
+</body>
+</html>
